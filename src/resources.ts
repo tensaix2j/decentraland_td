@@ -54,7 +54,8 @@ export default {
 
 		redflag: new Texture("models/redflag.png"),
 		blueflag: new Texture("models/blueflag.png"),
-		logo : new Texture("models/logo.png")
+		logo : new Texture("models/logo.png"),
+		heart: new Texture("models/heart.png")
 		
 
 	},

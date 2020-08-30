@@ -315,16 +315,26 @@ export class Txunit extends Entity {
 			let tile_z = Math.round( ( this.box2dbody.GetPosition().y  ) / this.parent.grid_size_z ) >> 0 ;
 
 			// This tile in in pathfinder's solution or not
-			let node = this.parent.pathfinder.getNode( tile_x, tile_z );
-			if ( node != null  && node["child"] != null ) {
+			let solution = this.parent.pathfinder.getSolution( tile_x, tile_z );
+			if ( solution != null  ) {
 
 				// is in, figure out tile's center;
-				let next_cx = node["child"]["x"] * this.parent.grid_size_x ;
-				let next_cz = node["child"]["y"] * this.parent.grid_size_z ;
+				let next_cx = solution[0] * this.parent.grid_size_x ;
+				let next_cz = solution[1] * this.parent.grid_size_z ;
 
 				this.walking_queue.push( new Vector3( next_cx , 0 , next_cz ) ) ;
 
-			} 
+			} else {
+				if ( tile_x <= -7 ) {
+					let i = 0;
+					for ( i = -1 ; i < 1; i++ ) {
+						if ( this.parent.pathfinder.getSolution( -6+i , 0 ) != null ) {
+							this.walking_queue.push( new Vector3( -6+i , 0 , 0 ) ) ;
+						}
+					}
+				}
+
+			}
 		}
 	}
 
@@ -338,6 +348,7 @@ export class Txunit extends Entity {
 			// Reached destination.
 			this.parent.sounds["pop"].playOnce();
 			this.die();
+			this.parent.unit_on_finish( this );
 			return ;
 		}
 
@@ -355,8 +366,8 @@ export class Txunit extends Entity {
 			if (  node != null && node["walkable"] != 1 ) {
 					
 				this.walking_queue.length = 0;
-				this.parent.pathfinder.findSubPath( tile_x, tile_z, 7, 0 );
-
+				this.parent.pathfinder.findPath( tile_x , tile_z , 7, 0 );
+				log(
 
 			} else {
 
@@ -365,8 +376,7 @@ export class Txunit extends Entity {
 		    	
 		    	var hyp = diff_x * diff_x + diff_z * diff_z ;
 
-		    	if ( hyp > this.speed * this.speed * dt * dt  ) {
-		    		
+		    	if ( hyp > 0.25  ) {
 		    		
 		    		var rad	 = Math.atan2( diff_x, diff_z );
 		    		var deg  = rad * 180.0 / Math.PI ;
@@ -384,6 +394,8 @@ export class Txunit extends Entity {
 
 		    	
 		    	} else {
+
+		    		
 
 		    		this.walking_queue.shift();
 		    		if ( this.walking_queue.length == 0 ) {
@@ -550,7 +562,7 @@ export class Txunit extends Entity {
 								projectile_type = 2;
 							}
 
-							
+
 
 							//createProjectile( src_v3, dst_v3 , owner , projectile_type , attacktarget, damage , damage_building ) {
 
