@@ -306,10 +306,15 @@ export class Txstage extends Entity {
                 this.player_cards_in_use.push(  this.player_cards_collection[i] );
             }
 
-            this.time_remaining = 10;
+            this.time_remaining = 10000000;
+
+
             this.cards_dealt_in_game = this.player_cards_collection.length;
             
-           
+            this.queue_command( [ "spawnUnit", "skeleton" , -7.3 + Math.random() * 0.05 , Math.random() - 0.5 , -1 ] );
+            this.units[0].rage = 1;
+
+
 
             this.rearrange_cards_selected();
             this.update_button_ui();
@@ -875,7 +880,7 @@ export class Txstage extends Entity {
                 
                 if ( this.current_mana >= upgradecost ) {
 
-                    if ( this.current_selected_unit.curlvl < 5 ) {
+                    if ( this.current_selected_unit.curlvl < 8 ) {
                         
                         this.current_selected_unit.curlvl += 1;
                         this.current_selected_unit.update_levelbadge_uv();
@@ -899,7 +904,7 @@ export class Txstage extends Entity {
 
                     } else {
                         
-                        this.uitxt_instruction.value = "Not enough mana";
+                        this.uitxt_instruction.value = "Max level reached";
                         this.sounds["denied"].playOnce();
                     }
 
@@ -1136,7 +1141,7 @@ export class Txstage extends Entity {
             
             this.sounds["medieval"].stop();
             this.sounds["wardrum"].playOnce();
-            this.current_mana = 50;
+            this.current_mana = 80;
 
             this.update_button_ui();
 
@@ -3382,7 +3387,7 @@ export class Txstage extends Entity {
             maxhp       = 8175;
             attackSpeed = 45;
 
-            speed       = 10;
+            speed       = 14;
 
             healthbar_y = 4;
             attack_building_only = 1;
@@ -3402,7 +3407,7 @@ export class Txstage extends Entity {
             maxhp       = 1452;
             attackSpeed = 36;
 
-            speed       = 12;
+            speed       = 15;
 
 
     	
@@ -3418,7 +3423,7 @@ export class Txstage extends Entity {
             maxhp       = 252;
             attackSpeed = 36;
             
-            speed       = 17;
+            speed       = 19;
 
 
 
@@ -3459,7 +3464,7 @@ export class Txstage extends Entity {
             maxhp       = 267;
             attackSpeed = 33;
             
-            speed       = 30;
+            speed       = 33;
             attackRange = 0.6;
 
 
@@ -3489,7 +3494,7 @@ export class Txstage extends Entity {
             maxhp       = 50;
             attackSpeed = 30;
 
-            speed       = 18;
+            speed       = 19;
 
             this.sounds["gargoyle"].playOnce();
             
@@ -3784,8 +3789,26 @@ export class Txstage extends Entity {
 
 
         if ( unit.owner == -1 ) {
-            maxhp = maxhp * ( 1 + this.current_wave / 5 );
+            
+            let ori_maxhp = maxhp;
+            let extra_hp  = 0;
+
+            let ori_speed = speed; 
+            let extra_speed = 0;
+
+            extra_hp = ori_maxhp * (  Math.pow(2, this.current_wave / 10)  ) ;
+            
+            if ( this.current_wave >= 10 ) {
+                extra_speed = this.current_wave / 10;
+            }
+            
+            maxhp = ori_maxhp + extra_hp;
+            speed = ori_speed + extra_speed;
         }
+
+
+
+
 
         unit.curhp       = maxhp;
         unit.maxhp       = maxhp;
@@ -3798,6 +3821,7 @@ export class Txstage extends Entity {
         unit.attack_building_only = attack_building_only;
         unit.dead       = 3;
         unit.isSpawner  = isSpawner;
+        unit.rage       = 0;
         unit.walking_queue.length = 0;
             
         if ( unit.owner == -1 ) {

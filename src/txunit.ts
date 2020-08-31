@@ -72,6 +72,7 @@ export class Txunit extends Entity {
 	public box2d_transform_args;
 
 	public levelbadge;
+	public rage = 0;
 
 
 	constructor( id, parent , transform_args, box2d_transform_args,  model , type, shapetype , owner, isFlying, aggroRange , healthbar_y , wait_buffer, model2  ) {
@@ -124,6 +125,7 @@ export class Txunit extends Entity {
 		// Includes towerarcher, towerwizard, towergoblinspear
 		if ( this.type.substr(0,5) == "tower" ) {
 
+
 			let tower_shooter = new Entity();
 			tower_shooter.setParent(this);
 			tower_shooter.addComponent( model2 );
@@ -168,6 +170,9 @@ export class Txunit extends Entity {
 			this.levelbadge.addComponent( this.parent.shared_levelbadge_material );
 			this.levelbadge.addComponent( this.parent.shared_billboard );
 			this.update_levelbadge_uv();
+
+			this.skin_radius = box2d_transform_args.scale.x * 0.5;
+
 		}
 
 		if ( this.type == "emptyblock" ) {
@@ -306,13 +311,26 @@ export class Txunit extends Entity {
 
 					} else {
 						// Mob
-						if ( this.attacking == 0 ) {
+						if ( this.shapetype == "dynamic" ) {
+
+							if ( this.rage == 1 ) {
 								
-							if ( this.shapetype == "dynamic" ) {
+								// Rage mode
+								this.find_attack_target();
+								this.attack_target();
+								if ( this.attacking == 0 ) {
+									this.move_self( dt );
+								}
+
+
+
+							} else {
+								// Normal									
 								this.find_move_target();
-								this.move_self( dt );
+								this.move_along_path( dt );
 							}
 						}
+						
 						this.updatePosition_toBox2d();
 					}
 				
@@ -407,8 +425,56 @@ export class Txunit extends Entity {
 		}
 	}
 
-	//-------
+
+	//-------------
+	// If monster is trapped, it will then turn on rage mode and attack the building.
 	move_self( dt ) {
+
+		if ( this.walking_queue.length > 0 ) {
+
+			var target = this.walking_queue[0];
+			
+			let diff_x = target.x -  this.box2dbody.GetPosition().x;
+	    	let diff_z = target.z -  this.box2dbody.GetPosition().y;
+	    	
+	    	var hyp = diff_x * diff_x + diff_z * diff_z ;
+
+	    	if ( hyp > this.speed * this.speed * dt * dt  ) {
+	    		
+	    		
+	    		var rad	 = Math.atan2( diff_x, diff_z );
+	    		var deg  = rad * 180.0 / Math.PI ;
+	    		var delta_x = this.speed * dt * Math.sin(rad);
+	    		var delta_z = this.speed * dt * Math.cos(rad);
+
+	    		this.box2dbody.SetLinearVelocity( new b2Vec2( delta_x ,delta_z ) );
+
+	    		this.transform.rotation.eulerAngles = new Vector3( 0, deg ,0) ;
+
+	    		this.getComponent(Animator).getClip("Punch").playing = false;
+				this.getComponent(Animator).getClip("Walking").playing = true;
+
+	    	
+	    	} else {
+
+	    		this.walking_queue.shift();
+	    		if ( this.walking_queue.length == 0 ) {
+	    			
+	    			this.movetarget = null;
+	    			this.find_move_target();
+	    		}
+	    	}
+	    	
+
+	    } 
+	}
+
+
+
+
+	//----------------------
+	// Move along pathfinder result's solution.
+	move_along_path( dt ) {
 
 		let tile_x = Math.round( ( this.box2dbody.GetPosition().x  ) / this.parent.grid_size_x ) >> 0 ;
 		let tile_z = Math.round( ( this.box2dbody.GetPosition().y  ) / this.parent.grid_size_z ) >> 0 ;
@@ -435,7 +501,13 @@ export class Txunit extends Entity {
 			if (  node != null && node["walkable"] != 1 ) {
 					
 				this.walking_queue.length = 0;
-				this.parent.pathfinder.findPath( tile_x , tile_z , 7, 0 );
+				let pathfinderresult = this.parent.pathfinder.findPath( tile_x , tile_z , 7, 0 );
+
+				if ( pathfinderresult == -1 ) {
+					// Monster is trapped.
+					this.rage = 1;
+
+				}
 				
 			} else {
 
@@ -563,6 +635,8 @@ export class Txunit extends Entity {
 						this.find_path_to_target();
 					}
 
+
+
 				} else { 
 
 					if ( this.attacking == 0 ) {
@@ -573,8 +647,6 @@ export class Txunit extends Entity {
 						this.attacking = this.attackSpeed;
 						this.tick = this.attackSpeed;
 
-
-							
 					}
 
 
@@ -687,6 +759,11 @@ export class Txunit extends Entity {
 						this.playAnimation("Walking", 1 );
 
 					}
+
+					// Killed the wall try again
+					if ( this.rage == 1 && this.owner == -1 )  {
+						this.rage = 0;
+					}
 				}
 
 			}
@@ -737,6 +814,7 @@ export class Txunit extends Entity {
 				this.attacktarget = null;
 				this.movetarget   = null;
 
+
 				
 
 			}
@@ -746,42 +824,44 @@ export class Txunit extends Entity {
 	//------------------
 	reinstate_box2d( box2d_transform_args ) {
 
-		if ( this.shapetype == "static" ) {
+		if ( this.parent.game_state == 1 ) {
+			if ( this.shapetype == "static" ) {
 
-			this.box2dbody = this.parent.createStaticBox(  
-	    				this.transform.position.x ,  
-	    				this.transform.position.z ,  
-	    				box2d_transform_args.scale.x ,
-	    				box2d_transform_args.scale.z , 
-	    				this.parent.world
-	    	);
-
-
-		} else {
-			this.box2dbody = this.parent.createDynamicCircle(  
-	    				this.transform.position.x ,  
-	    				this.transform.position.z ,  
-	    				box2d_transform_args.scale.x , 
-	    				this.parent.world, 
-	    				false 
-	    	);
-
-	    }
-	   	this.box2dbody.m_userData = this ;
+				this.box2dbody = this.parent.createStaticBox(  
+		    				this.transform.position.x ,  
+		    				this.transform.position.z ,  
+		    				box2d_transform_args.scale.x ,
+		    				box2d_transform_args.scale.z , 
+		    				this.parent.world
+		    	);
 
 
-	   	// Box2d's collision grouping
-    	let categoryBits = 1;
-    	let maskBits 	 = 1;
+			} else {
+				this.box2dbody = this.parent.createDynamicCircle(  
+		    				this.transform.position.x ,  
+		    				this.transform.position.z ,  
+		    				box2d_transform_args.scale.x , 
+		    				this.parent.world, 
+		    				false 
+		    	);
 
-	   	if ( this.isFlying == 1 ) {
-    		categoryBits = 2;
-    		maskBits     = 2;
-    	}
-    	this.box2dbody.m_fixtureList.m_filter.categoryBits = categoryBits;
-		this.box2dbody.m_fixtureList.m_filter.maskBits     = maskBits;
+		    }
+		   	this.box2dbody.m_userData = this ;
 
-	   	this.updatePosition_toBox2d();
+
+		   	// Box2d's collision grouping
+	    	let categoryBits = 1;
+	    	let maskBits 	 = 1;
+
+		   	if ( this.isFlying == 1 ) {
+	    		categoryBits = 2;
+	    		maskBits     = 2;
+	    	}
+	    	this.box2dbody.m_fixtureList.m_filter.categoryBits = categoryBits;
+			this.box2dbody.m_fixtureList.m_filter.maskBits     = maskBits;
+
+		   	this.updatePosition_toBox2d();
+		}
 		
 	}
 
@@ -882,102 +962,8 @@ export class Txunit extends Entity {
     	}
 
     	this.walking_queue.length = 0 ;
-    	let target;
-
-    	let target_at_otherside = 0;
-    	if ( ( this.transform.position.z < 0 && this.movetarget.transform.position.z > 0) || ( this.transform.position.z > 0 && this.movetarget.transform.position.z < 0 ) ) {
-    		target_at_otherside = 1;
-    	}
-    	
-
-    	if ( this.isFlying == 0 && ( this.owner == 1 && this.movetarget.transform.position.z > 0  || this.owner == -1 && this.movetarget.transform.position.z < 0 ) ) {
-
-
-
-
-
-
-	    	// Walk around own middle castle 
-	    	if (  target_at_otherside == 1 && (  ( this.owner == 1 && this.transform.position.z < -6.7 )  ||  ( this.owner == -1 && this.transform.position.z > 6.7 )  )   && this.transform.position.x > -1 && this.transform.position.x < 1 ) {
-	    		
-	    		target = new Vector3(0,0,0);
-	    		target.z = -1.5 * this.owner;
-
-	    		if ( this.transform.position.x < 0 ) {
-		    		target.x = -3;
-		    	} else {
-		    		target.x = 3;
-		    	}
-
-		    	this.walking_queue.push( target );
-			
-
-
-
-
-
-		    // Walk around own side castle
-			} else if ( target_at_otherside == 1 && (  ( this.owner == 1 && this.transform.position.z < -4.55 ) ||  ( this.owner == -1 && this.transform.position.z > 4.55) ) ) {
-
-				target = new Vector3(0,0,0);
-	    		target.z = -1.5 * this.owner;
-	    		
-	    		if ( this.transform.position.x < 0 ) {
-					if ( this.transform.position.x < -3  ) {
-						target.x = -4;
-					} else {
-						target.x = -2;
-					}
-				} else {
-					if ( this.transform.position.x > 3  ) {
-						target.x = 4;
-					} else {
-						target.x = 2;
-					}
-				}
-				this.walking_queue.push( target );
-			}
-
-	    	// Bridge target
-	    	if (  target_at_otherside == 1 && ( ( this.owner == 1 && this.transform.position.z < -0.5 ) || ( this.owner == -1 && this.transform.position.z > 0.5 ) )) {
-
-	    		target = new Vector3(0,0,0);
-	    		target.z = this.owner * -0.5;
-
-	    		if (  this.transform.position.x < 0 ) {
-		    		target.x = -3;
-		    	} else {
-		    		target.x = 3;
-		    	}
-		    	this.walking_queue.push( target );
-
-
-		    	target = new Vector3(0,0,0);
-	    		target.z = this.owner * 0.5;
-
-	    		if (  this.transform.position.x < 0 ) {
-		    		target.x = -3;
-		    	} else {
-		    		target.x = 3;
-		    	}
-		    	this.walking_queue.push( target );
-
-
-		    } 
-		}
-    	
-    	// The actual target.
-    	
-    	//target = new Transform();
-    	//target.position.x = this.attacktarget.transform.position.x;
-    	//target.position.z = this.attacktarget.transform.position.z;
-    	target = this.movetarget.transform.position;
+    	let target = this.movetarget.transform.position;
     	this.walking_queue.push( target );
-
-    	// This can cause problem
-    	//this.playAnimation("Walking", 1);
-    	
-
 
     }
 
