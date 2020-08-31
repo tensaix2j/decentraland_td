@@ -55,8 +55,9 @@ export default {
 		redflag: new Texture("models/redflag.png"),
 		blueflag: new Texture("models/blueflag.png"),
 		logo : new Texture("models/logo.png"),
-		heart: new Texture("models/heart.png")
-		
+		heart: new Texture("models/heart.png"),
+		levelbadge: new Texture("models/levelbadge.png"),
+		emptyblock: new Texture("models/emptyblock_ui.png")
 
 	},
 
@@ -84,6 +85,7 @@ export default {
 		wardrum:new AudioClip("sounds/wardrum.mp3"),
 		medieval: new AudioClip("sounds/medieval.mp3"),
 		pop:new AudioClip("sounds/pop.mp3");
+		powerup:new AudioClip("sounds/powerup.mp3");
 	}
 
 

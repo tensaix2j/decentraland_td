@@ -16,6 +16,7 @@ export class Txcard extends Entity {
 	public isSelected = 0;
 	public card_sel_highlight;
 	public model;
+	public texturename;
 
 	constructor( id, parent , transform_args, type , stage , highlight_material , manaCost , model , texturename  ) {
 
@@ -44,6 +45,8 @@ export class Txcard extends Entity {
 			0,1
 
 		];
+
+		this.texturename = texturename;
 
 		let card_material = new Material();
 		card_material.roughness = 1.0;

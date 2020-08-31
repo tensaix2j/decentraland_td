@@ -27,7 +27,6 @@ import { Txscoreboard } from "src/txscoreboard";
 import { Txclickable_box} from "src/txclickable_box";
 import { Txsound } from "src/txsound";
 import { EmitArg } from "src/txemit_args";
-import { TxAIBot } from "src/txaibot";
 import {PathFinder} from "src/pathfinder";
 
 
@@ -57,7 +56,8 @@ export class Txstage extends Entity {
     public shared_explosion_material;
     public shared_clock_material;
     public shared_zap_material;
-
+    public shared_levelbadge_material;
+    public shared_billboard;
 
 
     public uitxt_life ;
@@ -66,9 +66,10 @@ export class Txstage extends Entity {
     public uitxt_mana;
     public uiimg_selected_card;
     public uitxt_selected_card_mana;
+
     public uiimg_redflag;
     public uiimg_blueflag;
-
+    public uiimg_selected_unit_photo;
 
 
     public time_remaining = 30;
@@ -112,11 +113,7 @@ export class Txstage extends Entity {
     public tick = 0;
     public globaltick = 0;
 
-    public aibot ;
-
     
-
-
 
     public messageBus ;
     public emitBus      = [];
@@ -136,7 +133,12 @@ export class Txstage extends Entity {
 
 
     public current_mana = 80;
-    public current_wave = 0;    
+    public current_wave = 0; 
+
+    public current_selected_unit;
+    public current_selected_unit_highlight;
+
+
 
     public debugsetting = 0;
 
@@ -191,7 +193,25 @@ export class Txstage extends Entity {
 		);
 
 
-        
+        this.current_selected_unit_highlight = new Entity();
+        this.current_selected_unit_highlight.setParent( this );
+        this.current_selected_unit_highlight.addComponent( new PlaneShape() );
+        this.current_selected_unit_highlight.addComponent( new Transform( 
+            {
+                position: new Vector3(0, 1.5 ,0),
+                scale   : new Vector3( 1.1, 1.1, 1.1)
+            }
+        ));
+        this.current_selected_unit_highlight.getComponent(Transform).rotation.eulerAngles = new Vector3(-90,0,0);
+        let material = new Material();
+        material.emissiveColor = Color3.FromInts(0,255,0);
+        material.emissiveIntensity = 4.0;
+        this.current_selected_unit_highlight.addComponent( material );
+        this.current_selected_unit_highlight.getComponent( PlaneShape).visible = false;
+        this.current_selected_unit_highlight.getComponent( Transform ).position.y = -999;
+
+
+
 
         this.init_ui_2d();
         this.init_ui_3d();
@@ -199,9 +219,7 @@ export class Txstage extends Entity {
         this.init_sound();
         this.init_player_cards_collection();
         this.init_MessageBus();
-        //this.init_aibot();
         this.init_pathfinder();
-
         this.update_button_ui();
 
         this.debug();
@@ -237,7 +255,7 @@ export class Txstage extends Entity {
     debug( ) {
 
 
-        this.debugsetting = 1;
+        this.debugsetting = 0;
 
         if ( this.debugsetting == 1 ) {
 
@@ -476,6 +494,10 @@ export class Txstage extends Entity {
                     this.current_wave += 1;
                     this.time_remaining = 20;
 
+                    if ( this.current_wave > 100 ) {
+                        this.endgame();
+                    }
+
                 }
             }
 
@@ -511,14 +533,17 @@ export class Txstage extends Entity {
             this.menu_labels[b].getComponent( TextShape ).value = "";
         }
         this.card_sel_parent.getComponent(Transform).position.y  = -999;
-            
+        this.uiimg_selected_unit_photo.getComponent( PlaneShape ).visible = false;
+                    
         
         if ( this.game_state == 0 ) { 
 
             this.uiimg_redflag.visible = false;
             this.uiimg_blueflag.visible = false;
             this.uiimg_selected_card.visible = false;
-
+            this.current_selected_unit_highlight.getComponent( PlaneShape).visible = false;
+            this.current_selected_unit_highlight.getComponent( Transform ).position.y = -999;
+                        
 
             if  ( this.menu_page == 0 ) {
             
@@ -528,7 +553,7 @@ export class Txstage extends Entity {
             } else if ( this.menu_page == 1  ) {
 
                 this.card_sel_parent.getComponent(Transform).position.y = -2;
-                this.menu_labels["lbl1"].getComponent(TextShape).value = "Please Select "+ this.need_select_n_card +" cards to use in battle"
+                this.menu_labels["lbl1"].getComponent(TextShape).value = "Please Select "+ this.need_select_n_card +" cards to use"
                 this.buttons["confirm"].show();
                 this.buttons["cancel"].show();
                 
@@ -566,8 +591,49 @@ export class Txstage extends Entity {
             this.uiimg_redflag.visible = false;
             this.uiimg_blueflag.visible = false;
             
-            this.card_sel_parent.getComponent(Transform).position.y = 2;
-             this.buttons["leavegame"].show();
+            
+            if ( this.menu_page == 0 ) {
+            
+                this.card_sel_parent.getComponent(Transform).position.y = 2;
+                this.buttons["leavegame"].show();
+            
+            } else if ( this.menu_page == 12 ) {
+
+
+                this.menu_labels["lbl1"].getComponent( Transform ).scale.setAll( 0.25 )
+                this.menu_labels["lbl1"].getComponent( TextShape ).color = Color3.White();
+
+                this.menu_labels["lbl1"].getComponent(TextShape).value = "Unit Selected. Upgrade or Sell."
+
+                if ( this.current_selected_unit != null ) {
+
+                    let u = this.current_selected_unit;    
+                    
+                    let txcard      = this.get_txcard_by_type( u.type );
+                    if ( txcard != null ) {
+
+                        let upgrade     = u.damage;
+                        let upgradecost = Math.pow( 2 , u.curlvl - 1 ) * txcard.manaCost ;
+                        let sellcost    = upgradecost / 2  ;
+                        
+                        this.uiimg_selected_unit_photo.getComponent( Material ).albedoTexture = resources.textures[ txcard.texturename ];
+
+
+                        this.menu_labels["lbl4"].getComponent( TextShape ).value = ""+  this.getTowerUnitName( txcard.type ) +"\nLevel: "+ u.curlvl + "\nDamage: "+ u.damage +"\nUpgrade: +"+ upgrade +"\nUpgradeCost: "+ upgradecost +"\nSell: "+ sellcost + "\nHP: "+ u.curhp + "" ;
+                    
+                    } else {    
+                        this.menu_labels["lbl4"].getComponent( TextShape ).value = "";
+                    }
+                }
+
+                this.uiimg_selected_unit_photo.getComponent( PlaneShape ).visible = true;
+
+        
+                this.buttons["cancel"].show();
+                this.buttons["upgrade"].show();
+                this.buttons["sell"].show();
+                   
+            }
 
 
         } else if ( this.game_state == 2 ) {
@@ -578,7 +644,17 @@ export class Txstage extends Entity {
     }
 
 
-
+    //-------
+    get_txcard_by_type( type ) {
+        let i;
+        for ( i = 0 ; i < this.player_cards_collection.length ; i++ ) {
+            let txcard = this.player_cards_collection[i];
+            if ( txcard.type == type ) {
+                return txcard;
+            }
+        }    
+        return null;
+    }
 
 
 
@@ -787,8 +863,69 @@ export class Txstage extends Entity {
                 this.sounds["denied"].playOnce();
 
             }
+
+
+
+        } else if ( id == "upgrade" && this.current_selected_unit != null ) {
+                
+            let txcard      = this.get_txcard_by_type( this.current_selected_unit.type );
+            if ( txcard != null ) { 
+             
+                let upgradecost = Math.pow( 2 , this.current_selected_unit.curlvl - 1 ) * txcard.manaCost ;
+                
+                if ( this.current_mana >= upgradecost ) {
+
+                    if ( this.current_selected_unit.curlvl < 5 ) {
+                        
+                        this.current_selected_unit.curlvl += 1;
+                        this.current_selected_unit.update_levelbadge_uv();
+                        this.current_mana -= upgradecost;
+
+
+                        let upgrade_damage_delta = this.current_selected_unit.damage;
+                        this.current_selected_unit.damage += upgrade_damage_delta;
+                        
+                        let upgrade_hp_delta = ( this.current_selected_unit.maxhp * 0.5 ) >>0;
+                        this.current_selected_unit.maxhp  += upgrade_hp_delta;
+                        this.current_selected_unit.curhp  += upgrade_hp_delta;
+
+                        
+                        this.sounds["powerup"].playOnce();
+
+                        this.animate_button_tick = 20;
+                        this.animate_button_callback_id = id;
+                        this.animate_button_userdata = userData;
+
+
+                    } else {
+                        
+                        this.uitxt_instruction.value = "Not enough mana";
+                        this.sounds["denied"].playOnce();
+                    }
+
+
+                } else {
+                    this.uitxt_instruction.value = "Not enough mana";
+                    this.sounds["denied"].playOnce();
+                }
+            }
         
+
+        } else if ( id == "sell" && this.current_selected_unit != null ) {    
+            
+            let txcard      = this.get_txcard_by_type( this.current_selected_unit.type );
+            if ( txcard != null ) { 
+                
+                let upgradecost = Math.pow( 2 , this.current_selected_unit.curlvl - 1 ) * txcard.manaCost ;
+                let sellcost    = upgradecost / 2;
+
+                this.current_selected_unit.curlvl = 1;
+                this.current_selected_unit.die();
+                this.current_mana += sellcost;
+
+            }
         } else {
+
 
             this.animate_button_tick = 20;
             this.animate_button_callback_id = id;
@@ -984,9 +1121,8 @@ export class Txstage extends Entity {
 
                 this.uiimg_redflag.visible = true;
                 this.uiimg_blueflag.visible = true;
-                this.uitxt_instruction.value = "Fight";
-            
-           
+                this.uitxt_instruction.value = "Start";
+                
 
             }
 
@@ -995,6 +1131,7 @@ export class Txstage extends Entity {
             this.fill_player_cards_selected();
             this.rearrange_cards_selected(); 
             this.game_state = 1;
+            this.menu_page  = 0;
             
             
             this.sounds["medieval"].stop();
@@ -1063,6 +1200,16 @@ export class Txstage extends Entity {
             this.reset_game();
             this.update_button_ui();
             
+        } else if ( id == "unitclick" ) {
+
+            this.menu_page = 12;
+            this.update_button_ui();
+        
+
+        } else if ( id == "upgrade" ) {
+            
+            this.update_button_ui();
+
         }
    }
 
@@ -1117,6 +1264,24 @@ export class Txstage extends Entity {
 
 
 
+    //---------
+    unit_input_down( e, unit ) {
+
+        if ( this.game_state == 1 ) {
+
+            this.animate_button_tick = 20;
+            this.animate_button_callback_id = "unitclick";
+            this.sounds["buttonclick"].playOnce();
+
+            this.current_selected_unit_highlight.getComponent( PlaneShape).visible = true;
+            this.current_selected_unit_highlight.getComponent( Transform ).position.y = 1.5;
+            this.current_selected_unit_highlight.getComponent(Transform).position.x = unit.transform.position.x;
+            this.current_selected_unit_highlight.getComponent(Transform).position.z = unit.transform.position.z;
+
+            this.current_selected_unit = unit;
+
+        }
+    }
 
 
 
@@ -1421,6 +1586,7 @@ export class Txstage extends Entity {
         this.current_wave   =  0;
         this.release_monster_count = 0;
 
+
         // Clear everything.
         let u;
         for ( u = this.units.length - 1 ; u >= 0 ;  u--) {
@@ -1471,11 +1637,11 @@ export class Txstage extends Entity {
         this.game_state = 2;
         let final_txt = "Game Over.\n";
 
-        if ( this.life_remaining > 0 ) {
+        if ( this.life_remaining > 0 && this.current_wave > 100 ) {
             
-            final_txt += "Defender(Red) Wins!";
-            this.update_score;
-            
+            final_txt = "Congratulations! Defender(Red) Wins!";
+            this.uiimg_redflag.visible = true;
+
 
         } else if ( this.life_remaining <= 0 ) {
             final_txt += "Attacker(Blue) Wins!";
@@ -1639,7 +1805,7 @@ export class Txstage extends Entity {
         let i;
         for ( i = 0 ; i < this.units.length ; i++ ) {
             let u = this.units[i];
-            if ( u != null && u.dead == 0 && u.owner == -1 ) {
+            if ( u != null && u.dead == 0 && u.owner == -1 && u.isFlying == 0 ) {
                 let u_tile_x = Math.round( ( u.box2dbody.GetPosition().x  ) / this.grid_size_x ) >> 0 ;
                 let u_tile_z = Math.round( ( u.box2dbody.GetPosition().y  ) / this.grid_size_z ) >> 0 ;
                 if ( u_tile_x == tile_x && u_tile_z == tile_z ) {
@@ -1667,14 +1833,74 @@ export class Txstage extends Entity {
 
 
 
+
+   
+
+
+
     //-----------
     unit_on_die( unit ) {
         
         if ( this.game_state == 1 ) {
 
-            this.current_mana += 2;
+            if ( unit.owner == -1 ) {
+            
+                if ( unit.type == "giant" ) {
+                    this.current_mana += 40;
 
-        }
+
+                } else if ( unit.type == "prince" ) {
+                    this.current_mana += 50;
+
+                } else if ( unit.type == "pekka" ) {
+                
+                    this.current_mana += 60;    
+
+                } else if ( unit.type == "gargoyle" ) {
+                
+                    this.current_mana += 40;    
+                
+                } else if ( unit.type == "hogrider") {
+                    this.current_mana += 20;
+
+
+
+                } else if ( unit.type == "knight" ) {
+                    this.current_mana += 4;
+
+                } else if ( unit.type == "archer" ) {
+
+                    this.current_mana += 3;
+
+
+              
+
+                } else {
+                    this.current_mana += 2;
+                }
+            }
+            
+            if ( this.current_selected_unit == unit ) {
+                // If currently selected unit dies...
+                this.animate_button_tick = 20;
+                this.animate_button_callback_id = "cancel";
+                this.current_selected_unit = null;
+                this.current_selected_unit_highlight.getComponent( PlaneShape).visible = false;
+                this.current_selected_unit_highlight.getComponent( Transform ).position.y = -999;
+            }
+
+            if ( unit.owner == 1 ) {
+                
+                let u_tile_x = Math.round( ( unit.transform.position.x  ) / this.grid_size_x ) >> 0 ;
+                let u_tile_z = Math.round( ( unit.transform.position.z  ) / this.grid_size_z ) >> 0 ;
+
+                let node = this.pathfinder.getNode( u_tile_x , u_tile_z );
+                if ( node != null ) {
+                    node["walkable"] = 1;
+                    this.pathfinder.findPath( -7 , 0,  7 , 0 ) ;
+                }
+            }
+        }   
     }
 
 
@@ -1705,42 +1931,59 @@ export class Txstage extends Entity {
     get_monster_type_by_wave( ) {
         
         let monster_type = "skeleton";
-        if ( this.current_wave % 10 == 1 ) {
+        if ( this.current_wave  % 10 == 1 ) {
             monster_type = "skeleton";
 
         } else if ( this.current_wave % 10 == 2 ) {
             monster_type = "goblin";
+        
+
         } else if ( this.current_wave % 10 == 3 ) {
             monster_type = "skeleton";
+        
+
         } else if ( this.current_wave % 10 == 4 ) {
             monster_type = "goblin";
+        
         
         } else if ( this.current_wave % 10 == 5 ) {
             monster_type = "hogrider";
         
 
+        
         } else if ( this.current_wave % 10 == 6 ) {
             monster_type = "knight";
             
+        
         } else if ( this.current_wave % 10 == 7 ) {
             monster_type = "archer";
         
+        
         } else if ( this.current_wave % 10 == 8 ) {
-            monster_type = "skeleton";
+            monster_type = "gargoylehorde";
+        
         
         } else if ( this.current_wave % 10 == 9 ) {
             monster_type = "goblinspear";
-        }
-
-        if ( this.current_wave % 30 == 10 ) {
-            monster_type = "giant";
-        } else if ( this.current_wave % 30 == 15 ) {
-            monster_type = "prince";
-        } else if ( this.current_wave % 30 == 25 ) {
-            monster_type = "pekka";
-        }
-
         
+        } else if ( this.current_wave % 10 == 0 ) {
+
+            if ( this.current_wave % 50 == 10 ) { 
+                monster_type = "giant";
+            } else if ( this.current_wave % 50 == 20 ) {
+                monster_type = "prince";
+            } else if ( this.current_wave % 50 == 30 ) {
+                monster_type = "pekka" ;
+            } else if ( this.current_wave % 50 == 40 ) {
+                monster_type = "gargoyle" ;
+            } else if ( this.current_wave % 50 == 0 ) {
+                monster_type = "pekka" ;
+            }
+
+        }
+
+
+
         return monster_type;
     }
 
@@ -1752,8 +1995,16 @@ export class Txstage extends Entity {
         
         // Boss
         if ( this.current_wave % 5 == 0 ) {
+            monster_count = 2;
+        }
+        if ( this.current_wave % 10 == 0 ) {
             monster_count = 1;
         }
+
+        if ( this.current_wave == 50 ) {
+            monster_count = 5;
+        }
+
         return monster_count;
     }
 
@@ -1802,11 +2053,11 @@ export class Txstage extends Entity {
 
     //-----------------------------------------------------------
     // Bookmark txcard
-    public all_available_cards              = [ "towerarcher" , "towerwizard" , "spell_fireball","spell_zap", "towergoblinspear" ];
-    public all_available_cards_mana         = [ 5, 20, 20, 15, 15 ];
-    public all_available_cards_isspell      = [ 0 , 0 , 1 , 1 , 0 ];
-    public all_available_cards_modelname    = [ "archer" , "wizard" , "" , "", "goblinspear" ];
-    public all_available_cards_texturename  = [ "archer" , "wizard" , "spell_fireball" , "spell_zap", "goblinspear" ];
+    public all_available_cards              = [ "towerarcher" , "towerwizard" , "spell_fireball","spell_zap", "towergoblinspear" , "towerknight"  , "emptyblock"  ];
+    public all_available_cards_mana         = [             5,              20,               20,         15,                 15 ,            10  ,           2   ];
+    public all_available_cards_isspell      = [             0 ,              0 ,               1 ,         1,                  0 ,             0  ,           0   ];
+    public all_available_cards_modelname    = [     "archer"  ,       "wizard" ,              "" ,        "",      "goblinspear" ,    "knight"    ,          ""   ];
+    public all_available_cards_texturename  = [     "archer" ,        "wizard" , "spell_fireball" , "spell_zap",   "goblinspear" ,    "knight"    , "emptyblock"  ];
 
      //----
     init_player_cards_collection() {
@@ -2006,22 +2257,58 @@ export class Txstage extends Entity {
 
 
 
-       
 
 
 
 
-        /*
-        this.scoreboard = new Txscoreboard(
-            0,
-            this,
+
+        let selected_unit_photo = new Entity();
+        selected_unit_photo.setParent( this.ui3d_root );
+        selected_unit_photo.addComponent( new PlaneShape() );
+        selected_unit_photo.addComponent( new Transform(
             {
-                position: new Vector3( -4 ,11 , 0),
-                scale   : new Vector3( 1 , 1 , 1 ),
+                position: new Vector3( 1.5, 2.5 ,0),
+                scale : new Vector3(  2,  2 , 2 )
             }
-        )
-        this.scoreboard.getComponent(Transform).rotation.eulerAngles = new Vector3(0, 90 , 0 );
-        */
+        ));
+        selected_unit_photo.getComponent( PlaneShape ).visible = false;
+        selected_unit_photo.getComponent( PlaneShape ).uvs = [
+            0, 0 ,
+            1, 0 ,
+            1, 1 ,
+            0, 1 ,
+            0, 0 ,
+            1, 0 ,
+            1, 1 ,
+            0, 1 
+        ];
+        material = new Material();
+        material.albedoTexture = resources.textures["archer"];
+        material.specularIntensity = 0;
+        material.roughness = 1;
+        selected_unit_photo.addComponent( material );
+
+        this.uiimg_selected_unit_photo = selected_unit_photo;
+        
+
+
+
+
+
+        this.menu_labels["lbl4"] = new Entity();
+        this.menu_labels["lbl4"].addComponent( new TextShape() );
+        this.menu_labels["lbl4"].addComponent( new Transform(
+            {
+                position:new Vector3( 1.5, 0.5 , 0 ),
+                scale   :new Vector3( 0.25, 0.25, 0.25 )
+            }
+        ));
+
+        this.menu_labels["lbl4"].getComponent( TextShape ).color = Color3.White();
+        this.menu_labels["lbl4"].getComponent( Transform ).rotation.eulerAngles = new Vector3(0,180,0);
+        this.menu_labels["lbl4"].setParent( this.ui3d_root );
+
+        
 
         this.init_buttons();
     }   
@@ -2093,7 +2380,7 @@ export class Txstage extends Entity {
             "Leave Game" ,
             "leavegame", 
             {
-                position: new Vector3( 0, 1, 0),
+                position: new Vector3( 0, -2, 0),
                 scale   : new Vector3(0.5,0.5,0.5)
             },
             this.ui3d_root,
@@ -2136,6 +2423,32 @@ export class Txstage extends Entity {
             this.buttons["playButton" + i ].hide();
             this.buttons["playButton" + i ].box_transform.scale.x = 4.2;
         }
+
+
+        this.buttons["upgrade"] = new Txclickable_box(
+            "Upgrade" , 
+            "upgrade",
+            {
+                position: new Vector3( -1.5 , 1.5,  0),
+                scale   : new Vector3(0.5,0.5,0.5)
+            },
+           this.ui3d_root,
+            this
+        );
+        this.buttons["upgrade"].hide();
+
+
+        this.buttons["sell"] = new Txclickable_box(
+            "Sell" , 
+            "sell",
+            {
+                position: new Vector3( -1.5 , 0.5,  0),
+                scale   : new Vector3(0.5,0.5,0.5)
+            },
+           this.ui3d_root,
+            this
+        );
+        this.buttons["sell"].hide();
     }   
 
 
@@ -2352,6 +2665,16 @@ export class Txstage extends Entity {
 
         this.shared_box = new BoxShape();
 
+
+        material = new Material();
+        material.albedoTexture = resources.textures.levelbadge;
+        material.roughness = 1.0;
+        material.specularIntensity = 0;
+        material.transparencyMode  = 2;
+        this.shared_levelbadge_material = material; 
+
+        this.shared_billboard = new Billboard();
+
     }
 
 
@@ -2369,14 +2692,6 @@ export class Txstage extends Entity {
     }
 
 
-
-
-
-
-    //----------------
-    init_aibot() {
-        this.aibot = new TxAIBot( this );
-    }
 
 
 
@@ -2437,7 +2752,12 @@ export class Txstage extends Entity {
 
 
 
+    getTowerUnitName( type ) {
 
+        let remove_tower_prefix = type.replace("tower","")
+        return remove_tower_prefix.charAt(0).toUpperCase() + remove_tower_prefix.slice(1);
+
+    }
 
 
 
@@ -3059,7 +3379,7 @@ export class Txstage extends Entity {
     		model 		= resources.models.giant;
 
             damage      = 211;
-            maxhp       = 4175;
+            maxhp       = 8175;
             attackSpeed = 45;
 
             speed       = 10;
@@ -3139,37 +3459,37 @@ export class Txstage extends Entity {
             maxhp       = 267;
             attackSpeed = 33;
             
-            speed       = 40;
+            speed       = 30;
             attackRange = 0.6;
 
 
     	} else if ( type == "gargoyle" ) {
     		
-    		y 			= 2.5;
+    		y 			= 3.5;
+    		modelsize 	= 0.28;
+    		b2dsize  	= 0.28;
+    		model 		= resources.models.gargoyle;
+    		isFlying    = 1;
+            
+            damage      = 150;
+            maxhp       = 6195;
+            attackSpeed = 48;
+            speed       = 18;
+
+            this.sounds["gargoyle"].playOnce();
+
+    	} else if ( type == "gargoylehorde" ) {
+    		y 			= 3.5;
     		modelsize 	= 0.18;
     		b2dsize  	= 0.18;
     		model 		= resources.models.gargoyle;
     		isFlying    = 1;
             
-            damage      = 161;
-            maxhp       = 795;
-            attackSpeed = 48;
-            speed       = 20;
-
-            this.sounds["gargoyle"].playOnce();
-
-    	} else if ( type == "gargoylehorde" ) {
-    		y 			= 2.5;
-    		modelsize 	= 0.12;
-    		b2dsize  	= 0.12;
-    		model 		= resources.models.gargoyle;
-    		isFlying    = 1;
-            
             damage      = 84;
-            maxhp       = 220;
+            maxhp       = 50;
             attackSpeed = 30;
 
-            speed       = 32;
+            speed       = 18;
 
             this.sounds["gargoyle"].playOnce();
             
@@ -3183,6 +3503,8 @@ export class Txstage extends Entity {
             damage      = 67;
             maxhp       = 110;
             attackSpeed = 33;
+
+
             speed       = 40;
 
             attackRange = 5.0;
@@ -3198,7 +3520,7 @@ export class Txstage extends Entity {
             
 
             damage      = 325;
-            maxhp       = 1669;
+            maxhp       = 15669;
             attackSpeed = 42;
 
             speed       = 43;
@@ -3218,9 +3540,9 @@ export class Txstage extends Entity {
             model       = resources.models.hogrider;
             
             damage      = 264;
-            maxhp       = 1408;
+            maxhp       = 2408;
             attackSpeed = 48;
-            speed       = 55;
+            speed       = 45;
 
              attack_building_only = 1;
 
@@ -3236,7 +3558,7 @@ export class Txstage extends Entity {
             model       = resources.models.pekka;
 
             damage      = 678;
-            maxhp       = 3125;
+            maxhp       = 23125;
             attackSpeed = 54;
             speed       = 14.5;
             healthbar_y = 5.5;
@@ -3334,14 +3656,51 @@ export class Txstage extends Entity {
             model2      = resources.models.goblinspear;
             damage      = 67;
             maxhp       = 110;
-            attackSpeed = 33;
+            attackSpeed = 8;
             speed       = 0;
-            attackRange = 5.0;
+            attackRange = 4.5;
             projectile_user = 1;
     
             shapetype = "static";    
+
+
+
+
+        } else if ( type == "towerknight" ) {
+
+            y           = 1.41;
+            modelsize   = 1.0;
+            b2dsize     = 1.0;
+            
+            model       = this.shared_box;
+            model2      = resources.models.knight;
+            damage      = 167;
+            maxhp       = 1452;
+            attackSpeed = 36;
+            speed       = 0;
+            attackRange = 1.5;
+            projectile_user = 0;
     
+            shapetype = "static";    
+            
+
+        } else if ( type == "emptyblock" ) {
+
+            y           = 1.41;
+            modelsize   = 1.0;
+            b2dsize     = 1.0;
+            
+            model       = this.shared_box;
+            model2      = "";
+            damage      = 0;
+            maxhp       = 1000;
+            attackSpeed = 0;
+            speed       = 0;
+            attackRange = 0;
+            projectile_user = 0;
+            shapetype = "static";
         }
+
 
 
 
@@ -3430,6 +3789,7 @@ export class Txstage extends Entity {
 
         unit.curhp       = maxhp;
         unit.maxhp       = maxhp;
+        unit.curlvl      = 1;
     	unit.attackRange = attackRange;
     	unit.speed 		 = speed;
         unit.attackSpeed = attackSpeed;
