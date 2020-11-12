@@ -70,7 +70,7 @@ export class Txprojectile extends Entity {
 		let transform = this.getComponent(Transform);
 		let distance = Vector3.DistanceSquared(transform.position, this.dst_v3 ) // Check distance squared as it's more optimized
 
-    	if (distance > this.speed * this.speed * dt * dt ) {
+    	if (distance > 0.25 ) {
 
     		let direction = this.dst_v3.subtract(transform.position)
 		    transform.rotation = Quaternion.LookRotation(direction)

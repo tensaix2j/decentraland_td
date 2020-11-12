@@ -28,6 +28,8 @@ import { Txclickable_box} from "src/txclickable_box";
 import { Txsound } from "src/txsound";
 import { EmitArg } from "src/txemit_args";
 import {PathFinder} from "src/pathfinder";
+import {Utils} from "src/utils"
+import { getUserAccount, RPCSendableMessage  } from '@decentraland/EthereumController'
 
 
 export class Txstage extends Entity {
@@ -72,9 +74,7 @@ export class Txstage extends Entity {
     public uiimg_selected_unit_photo;
 
 
-    public time_remaining = 30;
-    public life_remaining = 20;
-
+   
 
 
     public buttons = {};
@@ -106,7 +106,8 @@ export class Txstage extends Entity {
 
    
 
-    public cards_dealt_in_game = 4;
+    public cards_dealt_in_game = 8;
+    public monster_cycle_wait_time = 10;
 
     public scoreboard;
 
@@ -137,6 +138,12 @@ export class Txstage extends Entity {
 
     public current_selected_unit;
     public current_selected_unit_highlight;
+
+    public difficulty = 0.2;
+
+    
+    public time_remaining = this.monster_cycle_wait_time;
+    public life_remaining = 20;
 
 
 
@@ -482,6 +489,7 @@ export class Txstage extends Entity {
     update_time() {
 
         if ( this.game_state == 1 ) {
+            
             this.tick += 1 ;
             
             if ( this.tick > 30 ) {
@@ -497,7 +505,7 @@ export class Txstage extends Entity {
                     this.release_monster_tick = 150;
                     
                     this.current_wave += 1;
-                    this.time_remaining = 20;
+                    this.time_remaining = this.monster_cycle_wait_time;
 
                     if ( this.current_wave > 100 ) {
                         this.endgame();
@@ -506,18 +514,16 @@ export class Txstage extends Entity {
                 }
             }
 
-            if ( this.game_state == 1 ) {
-                
-                let minutes_rem = (this.time_remaining / 60 ) >> 0;
-                let seconds_rem = this.time_remaining % 60;
+            let minutes_rem = (this.time_remaining / 60 ) >> 0;
+            let seconds_rem = this.time_remaining % 60;
 
-                let zeropad = ""
-                if ( (seconds_rem).toString().length == 1 ) {
-                    zeropad = "0";
-                }
-                this.uitxt_time.value = "Wave " + (this.current_wave + 1) + " to be released in :" +  minutes_rem + ":" + zeropad +  seconds_rem 
-            
+            let zeropad = ""
+            if ( (seconds_rem).toString().length == 1 ) {
+                zeropad = "0";
             }
+            this.uitxt_time.value = "Wave " + (this.current_wave + 1) + " to be released in :" +  minutes_rem + ":" + zeropad +  seconds_rem 
+        
+        
             
         }
     }
@@ -553,7 +559,9 @@ export class Txstage extends Entity {
             if  ( this.menu_page == 0 ) {
             
                 this.buttons["singleplayer"].show();
-                this.buttons["multiplayer"].show();
+                //this.buttons["multiplayer"].show();
+
+                this.displayHighscores();
             
             } else if ( this.menu_page == 1  ) {
 
@@ -601,6 +609,11 @@ export class Txstage extends Entity {
             
                 this.card_sel_parent.getComponent(Transform).position.y = 2;
                 this.buttons["leavegame"].show();
+
+                this.menu_labels["lbl1"].getComponent( Transform ).scale.setAll( 0.25 )
+                this.menu_labels["lbl1"].getComponent( TextShape ).color = Color3.White();
+                this.menu_labels["lbl1"].getComponent(TextShape).value = "Select a card to deploy."
+
             
             } else if ( this.menu_page == 12 ) {
 
@@ -662,6 +675,69 @@ export class Txstage extends Entity {
     }
 
 
+
+    //----------------------
+    displayHighscores() {
+
+        let url = "https://tensaistudio.xyz/manadefense/get_highscore.tcl";
+        let fetchopt = {
+            headers: {
+              'content-type': 'application/json'
+            },
+            method: 'GET'
+        };
+
+        executeTask(async () => {
+            try {
+                let resp = await fetch(url, fetchopt ).then(response => response.json())
+            
+                log("sent request to URL", url , "SUCCESS", resp );
+                let str = "";
+                let i;
+                for ( i = 0 ; i < resp.length ; i++ ) {
+                    str += ( i + 1 ) + "." + " " + resp[i]["username"] + "     " + resp[i]["score"] + "\n";
+                }
+                this.menu_labels["lbl5"].getComponent(TextShape).value = "Highscores"
+                this.menu_labels["lbl6"].getComponent(TextShape).value = str;
+            } catch(err) {
+                log("error to do", url, fetchopt, err );
+            }
+        });
+    }
+
+
+    //----------------------
+    async submitHighscores() {
+
+        let url = "https://tensaistudio.xyz/manadefense/update_highscore.tcl";
+       
+        const myaddress = await getUserAccount()
+        log("myaddress is " , myaddress);
+
+        let username = this.userID;
+        let useraddr = myaddress;
+        let score    = this.current_wave;
+
+        let sig      = Utils.sha256(useraddr + "wibble" + score );
+
+        let fetchopt = {
+            headers: {
+              'content-type': 'application/json'
+            },
+            body: "username="+ username + "&score="+ score + "&useraddr=" + useraddr+ "&sig=" + sig,
+            method: 'POST'
+        };
+        let _this = this;
+        try {
+            let resp = await fetch(url, fetchopt ).then(response => response.text())
+            log("sent request to URL", url , "SUCCESS", resp );
+            _this.displayHighscores();
+
+        } catch(err) {
+            log("error to do", url, fetchopt, err );
+        }
+   
+    }
 
 
 
@@ -734,8 +810,8 @@ export class Txstage extends Entity {
     				if (  hitEntity == this.battleground ) {
     					
                         
-    					let mouse_x = e.hit.hitPoint.x - this.transform.position.x;
-    					let mouse_z = e.hit.hitPoint.z - this.transform.position.z;
+    					let mouse_z = -( e.hit.hitPoint.x - this.transform.position.x );
+    					let mouse_x =  ( e.hit.hitPoint.z - this.transform.position.z );
 
 
                         let tile_x = Math.round( ( mouse_x  ) / this.grid_size_x ) >> 0 ;
@@ -803,14 +879,15 @@ export class Txstage extends Entity {
 
             // E button
         	if ( this.debugsetting == 1 ) {
-                this.playerindex = 1;
             }
+            //this.submitHighscores()
+            
 
         } else if ( e.buttonId == 2 ) {
         	// F button 	
         	
             if ( this.debugsetting == 1 ) {
-                this.playerindex = -1;
+            
             }
         }	
      }
@@ -1017,12 +1094,27 @@ export class Txstage extends Entity {
 
         if ( id == "singleplayer" ) {
 
+            /*
             this.menu_page = 1;
             this.game_mode = 1;
             this.opponent = "A.I Bot";
 
             this.rearrange_cards_collection();
             this.update_button_ui();
+            
+                // No need to select card, use all cards
+            */
+            
+                    
+            this.game_mode = 1;
+            this.menu_page = 2;
+            this.update_button_ui();
+            this.sounds["warhorn"].playOnce();
+            this.animate_button_callback_id = "battlebegin";
+            this.animate_button_tick = 40;
+            this.uiimg_redflag.visible = true;
+            this.uiimg_blueflag.visible = true;
+            this.uitxt_instruction.value = "Start";
 
 
         } else if ( id == "multiplayer" ) {
@@ -1133,8 +1225,10 @@ export class Txstage extends Entity {
 
         } else if ( id == "battlebegin" ) {
 
+            this.select_all_cards();
             this.fill_player_cards_selected();
             this.rearrange_cards_selected(); 
+            
             this.game_state = 1;
             this.menu_page  = 0;
             
@@ -1145,26 +1239,7 @@ export class Txstage extends Entity {
 
             this.update_button_ui();
 
-            this.menu_labels["lbl2"].getComponent( TextShape ).value = "VS";
             
-            if ( this.playerindex == 1 ) {
-                this.menu_labels["lbl1"].getComponent( TextShape ).value = this.userID;
-                this.menu_labels["lbl3"].getComponent( TextShape ).value = this.opponent;
-            } else { 
-                this.menu_labels["lbl1"].getComponent( TextShape ).value = this.opponent;
-                this.menu_labels["lbl3"].getComponent( TextShape ).value = this.userID;
-            }
-
-
-            this.menu_labels["lbl1"].getComponent( TextShape ).color = Color3.Red();
-            this.menu_labels["lbl3"].getComponent( TextShape ).color = Color3.FromInts(0, 204, 255);
-
-            this.menu_labels["lbl1"].getComponent( Transform ).scale.setAll( 0.5 )
-            this.menu_labels["lbl2"].getComponent( Transform ).scale.setAll( 0.3 )
-            this.menu_labels["lbl3"].getComponent( Transform ).scale.setAll( 0.5 )
-            
-            this.menu_labels["lbl2"].getComponent( Transform ).position.y = 3.65
-            this.menu_labels["lbl3"].getComponent( Transform ).position.y = 3.00
                     
 
         } else if ( id == "leavegame" ) {
@@ -1585,7 +1660,7 @@ export class Txstage extends Entity {
     //--------------
     reset_game() {
         
-        this.time_remaining = 30;
+        this.time_remaining = this.monster_cycle_wait_time;
         this.life_remaining = 20;    
         this.current_mana   = 80;
         this.current_wave   =  0;
@@ -1654,6 +1729,8 @@ export class Txstage extends Entity {
             
         } 
 
+        this.submitHighscores();
+
 
         final_txt += "\n\nLeave game to restart again";
         this.uitxt_instruction.value = final_txt;
@@ -1708,7 +1785,14 @@ export class Txstage extends Entity {
     }
 
 
-
+    //---------------
+    select_all_cards() {
+        let i;
+        for ( i = 0 ; i < this.player_cards_collection.length ; i++ ) {
+            let txcard = this.player_cards_collection[i];
+            txcard.turnon();
+        }
+    }
 
     //--------------------
     fill_player_cards_selected() {
@@ -1716,11 +1800,14 @@ export class Txstage extends Entity {
         let i;
         this.player_cards_in_use.length = 0;
         for ( i = 0 ; i < this.player_cards_collection.length ; i++ ) {
+
             if ( this.player_cards_collection[i].isSelected ) {
                 let txcard = this.player_cards_collection[i];
                 this.player_cards_in_use.push( txcard );
             }
         }
+
+
     }
 
 
@@ -1755,7 +1842,7 @@ export class Txstage extends Entity {
         }
         
 
-        for ( i = 0 ; i < this.cards_dealt_in_game ; i++ ) {
+        for ( i = 0 ; i < this.cards_dealt_in_game && i < this.player_cards_collection.length ; i++ ) {
             
             let x =  ( i % 4 ) * 1.2 - 2;
             let y = ((i / 4)  >> 0 ) * 1.2 - 2;
@@ -1971,7 +2058,7 @@ export class Txstage extends Entity {
         } else if ( this.current_wave % 10 == 9 ) {
             monster_type = "goblinspear";
         
-        } else if ( this.current_wave % 10 == 0 ) {
+        } else if ( this.current_wave % 10 == 0 && this.current_wave >= 10 ) {
 
             if ( this.current_wave % 50 == 10 ) { 
                 monster_type = "giant";
@@ -1981,7 +2068,7 @@ export class Txstage extends Entity {
                 monster_type = "pekka" ;
             } else if ( this.current_wave % 50 == 40 ) {
                 monster_type = "gargoyle" ;
-            } else if ( this.current_wave % 50 == 0 ) {
+            } else if ( this.current_wave % 50 == 0  ) {
                 monster_type = "pekka" ;
             }
 
@@ -2169,7 +2256,7 @@ export class Txstage extends Entity {
         this.ui3d_root.setParent( this );
         this.ui3d_root.addComponent( new Transform(
             {   
-                position: new Vector3( 0 , 4.5 , 7.5 )
+                position: new Vector3( -2 , 4.5 , 7.5 )
             }
         ) );
 
@@ -2190,6 +2277,26 @@ export class Txstage extends Entity {
         let material = new Material();
         material.albedoColor = Color3.FromInts(102, 77, 51);
         backboard.addComponent( material );
+
+        
+
+        let backboard2 = new Entity();
+        backboard2.setParent( this.ui3d_root );
+        backboard2.addComponent( new BoxShape() );
+        backboard2.addComponent( new Transform( 
+            {
+                position: new Vector3(-6.2 , 1 , -0.1  ),
+                scale   : new Vector3( 5, 13,  0.1 ) 
+            }
+        ));
+        let material2 = new Material();
+        material2.albedoColor = Color3.FromInts(32, 18, 13);
+        backboard2.addComponent( material2 );
+
+
+
+
+
 
         let logo = new Entity();
 
@@ -2313,6 +2420,39 @@ export class Txstage extends Entity {
         this.menu_labels["lbl4"].getComponent( Transform ).rotation.eulerAngles = new Vector3(0,180,0);
         this.menu_labels["lbl4"].setParent( this.ui3d_root );
 
+
+
+
+        // Highscores
+        this.menu_labels["lbl5"] = new Entity();
+        this.menu_labels["lbl5"].addComponent( new TextShape() );
+        this.menu_labels["lbl5"].addComponent( new Transform(
+            {
+                position:new Vector3( -6.2, 6.2 , 0 ),
+                scale   :new Vector3( 0.45, 0.45, 0.45 )
+            }
+        ));
+
+        this.menu_labels["lbl5"].getComponent( TextShape ).color = Color3.White();
+        this.menu_labels["lbl5"].getComponent( Transform ).rotation.eulerAngles = new Vector3(0,180,0);
+        this.menu_labels["lbl5"].setParent( this.ui3d_root );
+
+
+        this.menu_labels["lbl6"] = new Entity();
+        this.menu_labels["lbl6"].addComponent( new TextShape() );
+        this.menu_labels["lbl6"].addComponent( new Transform(
+            {
+                position:new Vector3( -4.5, 5.0 , 0 ),
+                scale   :new Vector3( 0.3, 0.3, 0.3 )
+            }
+        ));
+
+        this.menu_labels["lbl6"].getComponent( TextShape ).color = Color3.White();
+        this.menu_labels["lbl6"].getComponent( Transform ).rotation.eulerAngles = new Vector3(0,180,0);
+        this.menu_labels["lbl6"].setParent( this.ui3d_root );
+        this.menu_labels["lbl6"].getComponent( TextShape ).hTextAlign = "left";
+        this.menu_labels["lbl6"].getComponent( TextShape ).vTextAlign = "top";
+            
         
 
         this.init_buttons();
@@ -3149,18 +3289,18 @@ export class Txstage extends Entity {
             );
 
             if ( projectile_type == 1 ) {
-
+                // Arrow
                 projectile.speed = 4.5;
 
             } else if ( projectile_type == 2 ) {
-
-                projectile.speed = 2.5;
+                // Fireball
+                projectile.speed = 3.5;
                 projectile.getComponent( Transform ).scale.setAll(0.5);
                 projectile.addComponent( this.shared_fireball_material );
                 projectile.addComponent( new Billboard() );
             
             } else if ( projectile_type == 3 ) {
-                    
+                // Spell fireball
                 projectile.speed = 10;
                 projectile.getComponent( Transform ).scale.setAll(1.5);
                 projectile.addComponent( this.shared_fireball_material );
@@ -3244,7 +3384,12 @@ export class Txstage extends Entity {
 
         log( "Removing unit", u.id );
 
-        this.world.DestroyBody( u.box2dbody );
+        try {
+            this.world.DestroyBody( u.box2dbody );
+        } catch (error) {
+            log( u.id, "Error this.world.DestroyBody", error, "nvm continue.");
+        }
+        
         engine.removeEntity( this.units[ u.id ] );
         this.units[ u.id ] = null;
 
@@ -3367,7 +3512,7 @@ export class Txstage extends Entity {
     		b2dsize  	= 0.15;
     		model 		= resources.models.skeleton;
 
-            damage      = 67;
+            damage      = 7;
             maxhp       = 270;
             attackSpeed = 30;
 
@@ -3383,7 +3528,7 @@ export class Txstage extends Entity {
     		b2dsize  	= 0.25;
     		model 		= resources.models.giant;
 
-            damage      = 211;
+            damage      = 21;
             maxhp       = 8175;
             attackSpeed = 45;
 
@@ -3403,7 +3548,7 @@ export class Txstage extends Entity {
     		b2dsize  	= 0.15;
     		model 		= resources.models.knight;
 
-            damage      = 167;
+            damage      = 16;
             maxhp       = 1452;
             attackSpeed = 36;
 
@@ -3419,7 +3564,7 @@ export class Txstage extends Entity {
     		model 		= resources.models.archer;
             
 
-            damage      = 89;
+            damage      = 9;
             maxhp       = 252;
             attackSpeed = 36;
             
@@ -3441,7 +3586,7 @@ export class Txstage extends Entity {
     		b2dsize  	= 0.15;
     		model 		= resources.models.wizard;
 
-    	    damage      = 234;
+    	    damage      = 23;
             maxhp       = 598;
             attackSpeed = 42;
             
@@ -3460,7 +3605,7 @@ export class Txstage extends Entity {
     		model 		= resources.models.goblin;
     		speed 		= 5.0;
 
-    		damage      = 90;
+    		damage      = 9;
             maxhp       = 267;
             attackSpeed = 33;
             
@@ -3476,7 +3621,7 @@ export class Txstage extends Entity {
     		model 		= resources.models.gargoyle;
     		isFlying    = 1;
             
-            damage      = 150;
+            damage      = 15;
             maxhp       = 6195;
             attackSpeed = 48;
             speed       = 18;
@@ -3490,7 +3635,7 @@ export class Txstage extends Entity {
     		model 		= resources.models.gargoyle;
     		isFlying    = 1;
             
-            damage      = 84;
+            damage      = 8;
             maxhp       = 50;
             attackSpeed = 30;
 
@@ -3505,7 +3650,7 @@ export class Txstage extends Entity {
             b2dsize     = 0.15;
             model       = resources.models.goblinspear;
             
-            damage      = 67;
+            damage      = 6;
             maxhp       = 110;
             attackSpeed = 33;
 
@@ -3524,7 +3669,7 @@ export class Txstage extends Entity {
             model       = resources.models.prince;
             
 
-            damage      = 325;
+            damage      = 32;
             maxhp       = 15669;
             attackSpeed = 42;
 
@@ -3544,7 +3689,7 @@ export class Txstage extends Entity {
             b2dsize     = 0.15;
             model       = resources.models.hogrider;
             
-            damage      = 264;
+            damage      = 26;
             maxhp       = 2408;
             attackSpeed = 48;
             speed       = 45;
@@ -3562,7 +3707,7 @@ export class Txstage extends Entity {
             b2dsize     = 0.2;
             model       = resources.models.pekka;
 
-            damage      = 678;
+            damage      = 67;
             maxhp       = 23125;
             attackSpeed = 54;
             speed       = 14.5;
@@ -3796,14 +3941,14 @@ export class Txstage extends Entity {
             let ori_speed = speed; 
             let extra_speed = 0;
 
-            extra_hp = ori_maxhp * (  Math.pow(2, this.current_wave / 10)  ) ;
+            extra_hp = ori_maxhp * (  Math.pow(2, this.current_wave / 10)  )  ;
             
             if ( this.current_wave >= 10 ) {
-                extra_speed = this.current_wave / 10;
+                extra_speed = this.current_wave / 10 * this.difficulty ;
             }
             
-            maxhp = ori_maxhp + extra_hp;
-            speed = ori_speed + extra_speed;
+            maxhp = (ori_maxhp + extra_hp )   * this.difficulty;
+            speed = (ori_speed + extra_speed) ;
         }
 
 

@@ -439,7 +439,7 @@ export class Txunit extends Entity {
 	    	
 	    	var hyp = diff_x * diff_x + diff_z * diff_z ;
 
-	    	if ( hyp > this.speed * this.speed * dt * dt  ) {
+	    	if ( hyp > 0.25  ) {
 	    		
 	    		
 	    		var rad	 = Math.atan2( diff_x, diff_z );

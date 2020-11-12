@@ -54,7 +54,8 @@ export class MainClass {
         );
 
         stage.transform.position.y = -1.41;
-        
+        stage.transform.rotation.eulerAngles = new Vector3(0,-90,0);
+
 
         this.stages.push( stage );
 		

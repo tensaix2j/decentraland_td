@@ -45,7 +45,7 @@ export class Txclock extends Entity {
 		this.addComponent( shared_material );
 
 		this.getComponent( PlaneShape ).uvs = this.getUV_coord();
-		this.addComponent( new Billboard() );
+		this.addComponent(  this.parent.shared_billboard );
 
 		this.tick 			= 0;
 		this.endtick 		= endtick;
